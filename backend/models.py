@@ -15,6 +15,7 @@ class User(Base):
     # 关系：级联删除用户的物品和收藏
     items = relationship('Item', back_populates='owner', cascade='all, delete-orphan')
     favorites = relationship('Favorite', back_populates='user', cascade='all, delete-orphan')
+    purchases = relationship('Purchase', back_populates='buyer', cascade='all, delete-orphan', foreign_keys='Purchase.buyer_id')
 
 class Category(Base):
     __tablename__ = 'categories'
@@ -59,3 +60,17 @@ class Announcement(Base):
     content = Column(String(1000))
     images = Column(String(1000), default="[]") 
     created_at = Column(DateTime, default=datetime.now)
+
+class Purchase(Base):
+    __tablename__ = 'purchases'
+    id = Column(Integer, primary_key=True, index=True)
+    buyer_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
+    seller_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'))
+    item_id = Column(Integer, ForeignKey('items.id', ondelete='SET NULL'))
+    item_title = Column(String(100))  # 存储快照，防止商品被删除后看不到标题
+    price = Column(Float)  # 存储购买时的价格
+    created_at = Column(DateTime, default=datetime.now)
+    
+    buyer = relationship('User', back_populates='purchases', foreign_keys=[buyer_id])
+    seller = relationship('User', foreign_keys=[seller_id])
+    item = relationship('Item', foreign_keys=[item_id])

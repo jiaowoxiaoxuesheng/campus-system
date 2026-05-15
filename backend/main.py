@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, or_, desc, func, extract
 from sqlalchemy.orm import sessionmaker, Session
-from models import Base, User, Category, Item, Favorite, Announcement
+from models import Base, User, Category, Item, Favorite, Announcement, Purchase
 from datetime import datetime, timedelta
 import secrets
 import shutil
@@ -152,8 +152,10 @@ def get_items(
     }
 
 @app.get("/api/items/{item_id}")
-def get_item_detail(item_id: int, token: Optional[str] = Header(None), db: Session = Depends(get_db)):
+def get_item_detail(item_id: int, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """物品详情，含浏览量自增机制"""
+    # 支持两种 header 格式：Authorization 或通过查询参数
+    token = authorization
     item = db.query(Item).filter(Item.id == item_id).first()
     if not item: raise HTTPException(status_code=404)
     
@@ -168,6 +170,9 @@ def get_item_detail(item_id: int, token: Optional[str] = Header(None), db: Sessi
     if should_increment:
         item.views += 1
         db.commit()
+    else:
+        # 即使不增加浏览量，也要刷新session以确保返回最新数据
+        db.refresh(item)
     
     # 构造返回体加入 owner_name 等前端可能需要的字段（防止直接返回ORM引发部分关联属性缺失）
     # 但由于旧逻辑直接返回 item，前端可能期望原样。为了不破坏前端，我们直接转换成dict并加字段
@@ -234,37 +239,58 @@ def get_my_publishes(user_id: int, db: Session = Depends(get_db)):
     """我的发布列表"""
     return db.query(Item).filter(Item.user_id == user_id).all()
 
+@app.get("/api/users/{user_id}/purchases")
+def get_my_purchases(user_id: int, db: Session = Depends(get_db)):
+    """我的购买列表"""
+    purchases = db.query(Purchase).filter(Purchase.buyer_id == user_id).order_by(desc(Purchase.created_at)).all()
+    return [{
+        "id": p.id,
+        "item_id": p.item_id,
+        "item_title": p.item_title,
+        "price": p.price,
+        "seller_name": p.seller.username if p.seller else "未知",
+        "created_at": p.created_at.isoformat()
+    } for p in purchases]
+
 @app.put("/api/items/batch-status")
-def batch_update_status(item_ids: List[int], status: int, db: Session = Depends(get_db)):
+def batch_update_status(item_ids: List[int], status: int, token: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """加分项：批量修改商品状态"""
+    # 权限验证：仅管理员可操作
+    if not token or token not in fake_token_store:
+        raise HTTPException(status_code=401, detail="请先登录")
+    user_id = fake_token_store[token]
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or user.role != 'admin':
+        raise HTTPException(status_code=403, detail="只有管理员可以批量修改商品状态")
+    
     db.query(Item).filter(Item.id.in_(item_ids)).update({"status": status}, synchronize_session=False)
     db.commit()
     return {"message": "批量更新状态成功"}
 
 @app.get("/api/hot-items")
 def get_hot_items(db: Session = Depends(get_db)):
-    """加分项：热门商品排行"""
-    return db.query(Item).order_by(desc(Item.views)).limit(5).all()
+    """加分项：热门商品排行 - 仅显示上架商品"""
+    return db.query(Item).filter(Item.status == 1).order_by(desc(Item.views)).limit(5).all()
 
 @app.get("/api/price-trends")
 def get_price_trends(db: Session = Depends(get_db)):
-    """加分项：价格趋势展示 (全局按分类统计平均价格)"""
+    """加分项：价格趋势展示 (全局按分类统计平均价格) - 仅统计上架商品"""
     trends = db.query(
         Category.name, 
         func.avg(Item.price).label("avg_price")
-    ).join(Item, Category.id == Item.category_id).group_by(Category.name).all()
+    ).join(Item, Category.id == Item.category_id).filter(Item.status == 1).group_by(Category.name).all()
     
     return [{"category_name": t[0], "avg_price": round(t[1] or 0, 2)} for t in trends]
 
 @app.get("/api/price-trends/{category_name}")
 def get_category_price_trend(category_name: str, db: Session = Depends(get_db)):
-    """类别下随时间变化的折线图价格趋势"""
+    """类别下随时间变化的折线图价格趋势 - 仅统计上架商品"""
     # 按日期(年-月-日)分组统计平均价格
     items = db.query(
         func.date(Item.created_at).label('date'),
         func.avg(Item.price).label('avg_price')
     ).join(Category, Category.id == Item.category_id)\
-     .filter(Category.name == category_name)\
+     .filter(Category.name == category_name, Item.status == 1)\
      .group_by('date').order_by('date').all()
     
     # 将日期转为字符串，价格保留两位小数
@@ -353,8 +379,16 @@ def delete_announcement(ann_id: int, db: Session = Depends(get_db), current_user
     return {"message": "公告删除成功"}
 
 @app.post("/api/items/{item_id}/buy")
-def buy_item(item_id: int, db: Session = Depends(get_db)):
+def buy_item(item_id: int, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """模拟购买机制"""
+    # 验证买家身份
+    if not authorization or authorization not in fake_token_store:
+        raise HTTPException(status_code=401, detail="请先登录")
+    buyer_id = fake_token_store[authorization]
+    buyer = db.query(User).filter(User.id == buyer_id).first()
+    if not buyer:
+        raise HTTPException(status_code=401, detail="用户不存在")
+    
     item = db.query(Item).filter(Item.id == item_id).first()
     if not item or item.status != 1:
         raise HTTPException(status_code=400, detail="商品已被抢走或已下架")
@@ -362,11 +396,20 @@ def buy_item(item_id: int, db: Session = Depends(get_db)):
     # 将商品状态设为已售出
     item.status = 2
     
-    # 为卖家增加余额（如果是管理员在后台强制改status为3的话，是不走这个接口且不加钱的，符合逻辑要求）
+    # 为卖家增加余额
     seller = db.query(User).filter(User.id == item.user_id).first()
     if seller:
         seller.balance += item.price
-        
+    
+    # 记录购买信息
+    purchase = Purchase(
+        buyer_id=buyer_id,
+        seller_id=item.user_id,
+        item_id=item_id,
+        item_title=item.title,
+        price=item.price
+    )
+    db.add(purchase)
     db.commit()
     return {"message": "购买成功！"}
 

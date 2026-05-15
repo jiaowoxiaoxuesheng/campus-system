@@ -84,23 +84,27 @@ const loadData = async () => {
 
 const addCategory = async () => {
     if(!newCategory.value) return 
-    await fetch('http://localhost:8000/api/categories', {
+    const res = await fetch('http://localhost:8000/api/categories', {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'token': token
+            'Authorization': token
         },
         body: JSON.stringify({ name: newCategory.value })
     })
-    newCategory.value = ''
-    loadData()
+    if(res.ok) {
+        newCategory.value = ''
+        loadData()
+    } else {
+        alert("添加分类失败")
+    }
 }
 
 const deleteCategory = async (cat_id) => {
     if(!confirm("确定要删除这个分类吗？")) return;
     const res = await fetch(`http://localhost:8000/api/categories/${cat_id}`, {
         method: 'DELETE',
-        headers: { 'token': token }
+        headers: { 'Authorization': token }
     })
     if(res.ok) {
         loadData()
@@ -131,7 +135,7 @@ const publishAnnouncement = async () => {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'token': token 
+            'Authorization': token 
         },
         body: JSON.stringify({
             title: announcement.value.title,
@@ -151,12 +155,21 @@ const publishAnnouncement = async () => {
 const forceTakeDown = async (item_id) => {
     if(!confirm("强制下架不会赔偿卖家，是否确认？")) return;
     // 使用原先就写好的批量状态修改接口，但仅勾选1个
-    await fetch('http://localhost:8000/api/items/batch-status', {
+    const res = await fetch('http://localhost:8000/api/items/batch-status', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': token 
+        },
         body: JSON.stringify({ item_ids: [item_id], status: 3 })
     })
-    loadData()
+    if(res.ok) {
+        alert("下架成功！")
+        loadData()
+    } else {
+        const data = await res.json()
+        alert("下架失败: " + (data.detail || "未知错误"))
+    }
 }
 
 onMounted(loadData)

@@ -9,6 +9,7 @@ const routes = [
   // 必须需要登录验证权限的路由
   { path: '/publish', component: () => import('../views/PublishView.vue'), meta: { requiresAuth: true } },
   { path: '/my-publishes', component: () => import('../views/MyPublishesView.vue'), meta: { requiresAuth: true } },
+  { path: '/my-purchases', component: () => import('../views/MyPurchasesView.vue'), meta: { requiresAuth: true } },
   { path: '/my-favorites', component: () => import('../views/MyFavoritesView.vue'), meta: { requiresAuth: true } },
   { path: '/admin-panel', component: () => import('../views/AdminPanelView.vue'), meta: { requiresAuth: true } }
 ]

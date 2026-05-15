@@ -48,17 +48,27 @@ onMounted(async () => {
     // 加载详情与增加浏览量，传递 token 以防自己/管理员访问增加浏览量
     const token = localStorage.getItem('token') || ''
     const res = await fetch(`http://localhost:8000/api/items/${route.params.id}`, {
-        headers: { 'token': token }
+        headers: token ? { 'Authorization': token } : {}
     })
+    if (!res.ok) {
+        alert('加载商品详情失败: ' + res.status)
+        return
+    }
     const data = await res.json()
     item.value = data
     images.value = JSON.parse(data.images || '[]')
     
     // 检查是否已收藏
     if(userId) {
-        const favRes = await fetch(`http://localhost:8000/api/users/${userId}/favorites`)
-        const favs = await favRes.json()
-        isFavorite.value = favs.some(f => f.id === data.id)
+        try {
+            const favRes = await fetch(`http://localhost:8000/api/users/${userId}/favorites`)
+            if (favRes.ok) {
+                const favs = await favRes.json()
+                isFavorite.value = favs.some(f => f.id === data.id)
+            }
+        } catch(e) {
+            console.error('获取收藏列表失败', e)
+        }
     }
 })
 
@@ -67,8 +77,10 @@ const buyItem = async () => {
     if(!confirm(`您确定要花费 ￥${item.value.price} 购买该商品吗？`)) return;
 
     try {
+        const token = localStorage.getItem('token') || ''
         const res = await fetch(`http://localhost:8000/api/items/${item.value.id}/buy`, {
-            method: 'POST'
+            method: 'POST',
+            headers: token ? { 'Authorization': token } : {}
         })
         const data = await res.json()
         if(res.ok) {

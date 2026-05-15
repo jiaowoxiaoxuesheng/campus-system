@@ -10,6 +10,7 @@
         <template v-if="auth.token">
           <router-link v-if="auth.role === 'user'" to="/publish">发布闲置</router-link>
           <router-link v-if="auth.role === 'user'" to="/my-publishes">我的发布</router-link>
+          <router-link v-if="auth.role === 'user'" to="/my-purchases">我的购买</router-link>
           <router-link v-if="auth.role === 'user'" to="/my-favorites">我的收藏</router-link>
           
           <!-- 管理员可见菜单 -->
