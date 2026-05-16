@@ -15,9 +15,15 @@
       <p style="white-space: pre-wrap; line-height: 1.6; color: #555;">{{ ann.content }}</p>
       
       <div v-if="getImages(ann.images).length > 0" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
-        <img v-for="img in getImages(ann.images)" :src="img" :key="img" style="max-width: 200px; border-radius: 8px; border: 1px solid #ccc;">
+        <img v-for="img in getImages(ann.images)" :src="img" :key="img" @click="previewImage = img" style="max-width: 200px; border-radius: 8px; border: 1px solid #ccc; cursor: zoom-in;">
       </div>
     </div>
+  </div>
+
+  <!-- 图片预览模态框 -->
+  <div v-if="previewImage" class="preview-modal" @click="previewImage = null">
+      <img :src="previewImage" @click.stop />
+      <button class="close-preview" @click="previewImage = null">×</button>
   </div>
 </template>
 
@@ -26,6 +32,7 @@ import { ref, onMounted } from 'vue'
 
 const announcements = ref([])
 const isAdmin = ref(localStorage.getItem('role') === 'admin')
+const previewImage = ref(null)
 
 const loadData = async () => {
     const res = await fetch('http://localhost:8000/api/announcements')
@@ -55,3 +62,9 @@ const getImages = (imagesStr) => {
     }
 }
 </script>
+
+<style scoped>
+.preview-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+.preview-modal img { max-width: 90%; max-height: 90vh; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+.close-preview { position: absolute; top: 20px; right: 30px; background: #fff; color: #333; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 24px; cursor: pointer; font-weight: bold; line-height: 40px; text-align: center; }
+</style>

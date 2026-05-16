@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+﻿from pydantic import BaseModel
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,16 +61,22 @@ class UserAuth(BaseModel):
     username: str
     password: str
 
+class BatchUpdateStatusRequest(BaseModel):
+    item_ids: List[int]
+    status: int
+
 # 模拟的 Token 会话存储（课设足够，企业级应存 Redis 或 JWT）
 fake_token_store = {}
 
-def get_current_user(token: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    if not token or token not in fake_token_store:
+def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    if not authorization or authorization not in fake_token_store:
         raise HTTPException(status_code=401, detail="请先登录")
-    user_id = fake_token_store[token]
+    user_id = fake_token_store[authorization]
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="无效的用户凭证")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已被禁用")
     return user
 
 # ==================== 身份验证与权限接口 ====================
@@ -90,6 +96,8 @@ def login(user: UserAuth, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username, User.password == user.password).first()
     if not db_user:
         raise HTTPException(status_code=400, detail="用户名或密码错误")
+    if not db_user.is_active:
+        raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
     token = secrets.token_hex(16)
     fake_token_store[token] = db_user.id
     return {
@@ -191,6 +199,21 @@ def get_item_detail(item_id: int, authorization: Optional[str] = Header(None), d
         "owner_name": item.owner.username if item.owner else "未知"
     }
 
+@app.put("/api/items/batch-status")
+def batch_update_status(req: BatchUpdateStatusRequest, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    """加分项：批量修改商品状态"""
+    # 权限验证：仅管理员可操作
+    if not authorization or authorization not in fake_token_store:
+        raise HTTPException(status_code=401, detail="请先登录")
+    user_id = fake_token_store[authorization]
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or user.role != 'admin':
+        raise HTTPException(status_code=403, detail="只有管理员可以批量修改商品状态")
+    
+    db.query(Item).filter(Item.id.in_(req.item_ids)).update({"status": req.status}, synchronize_session=False)
+    db.commit()
+    return {"message": "批量更新状态成功"}
+
 @app.post("/api/items")
 def create_item(item: ItemCreate, db: Session = Depends(get_db)):
     """物品发布"""
@@ -228,7 +251,18 @@ def toggle_favorite(user_id: int, item_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": msg}
 
-@app.get("/api/users/{user_id}/favorites")
+
+@app.get('/api/items/{item_id}/compare')
+def compare_price(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(Item).filter(Item.id == item_id).first()
+    if not item: return {'avg_price': 0, 'min_price': 0}
+    category_items = db.query(Item).filter(Item.category_id == item.category_id, Item.status == 1).all()
+    if not category_items:
+        return {'avg_price': item.price, 'min_price': item.price}
+    prices = [i.price for i in category_items]
+    return {'avg_price': round(sum(prices)/len(prices), 2), 'min_price': min(prices)}
+
+@app.get('/api/users/{user_id}/favorites')
 def get_my_favorites(user_id: int, db: Session = Depends(get_db)):
     """我的收藏列表"""
     favs = db.query(Favorite).filter(Favorite.user_id == user_id).all()
@@ -251,21 +285,6 @@ def get_my_purchases(user_id: int, db: Session = Depends(get_db)):
         "seller_name": p.seller.username if p.seller else "未知",
         "created_at": p.created_at.isoformat()
     } for p in purchases]
-
-@app.put("/api/items/batch-status")
-def batch_update_status(item_ids: List[int], status: int, token: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    """加分项：批量修改商品状态"""
-    # 权限验证：仅管理员可操作
-    if not token or token not in fake_token_store:
-        raise HTTPException(status_code=401, detail="请先登录")
-    user_id = fake_token_store[token]
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user or user.role != 'admin':
-        raise HTTPException(status_code=403, detail="只有管理员可以批量修改商品状态")
-    
-    db.query(Item).filter(Item.id.in_(item_ids)).update({"status": status}, synchronize_session=False)
-    db.commit()
-    return {"message": "批量更新状态成功"}
 
 @app.get("/api/hot-items")
 def get_hot_items(db: Session = Depends(get_db)):
@@ -425,4 +444,27 @@ def admin_get_all_items(db: Session = Depends(get_db)):
     """管理员：强制查看与管理所有商品"""
     items = db.query(Item).order_by(desc(Item.created_at)).all()
     return [{"id": i.id, "title": i.title, "price": i.price, "status": i.status, "owner_name": i.owner.username if i.owner else "未知"} for i in items]
+
+@app.get("/api/admin/users")
+def get_all_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """管理员：获取所有用户"""
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="无权操作")
+    return [{"id": u.id, "username": u.username, "role": u.role, "is_active": u.is_active} for u in db.query(User).all()]
+
+@app.put("/api/admin/users/{user_id}/toggle-status")
+def toggle_user_status(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """管理员：禁用或解禁账号"""
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="无权操作")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.role == 'admin':
+        raise HTTPException(status_code=400, detail="不能禁用管理员账号")
+    
+    user.is_active = not user.is_active
+    db.commit()
+    return {"message": "操作成功", "is_active": user.is_active}
+
 

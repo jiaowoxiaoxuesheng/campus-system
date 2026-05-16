@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div>
     <!-- 引入的组件 -->
     <div class="filters">
@@ -15,27 +15,28 @@
 
     <!-- 热门推荐 / 价格趋势 (加分项) -->
     <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-      <div class="panel">
+      <div class="panel hot-panel">
         <h3>🔥 热门商品推荐</h3>
         <ul>
           <li v-for="hot in hotItems" :key="hot.id">{{ hot.title }} - 👁 {{ hot.views }}次浏览</li>
         </ul>
       </div>
-      <div class="panel" style="flex: 1; position: relative;">
+      <div class="panel chart-panel" style="flex: 1; position: relative;">
         <h3 v-if="!currentCategoryChart">📈 价格趋势 (分类均价) - 点击柱子查看详情</h3>
         <h3 v-else>📈 {{ currentCategoryChart }} 价格连线趋势图 (按日统计)</h3>
-        <button v-if="currentCategoryChart" @click="resetChartToCategories" style="position: absolute; right: 20px; top: 15px; padding: 3px 10px; cursor: pointer;">返回总览</button>
+        <button v-if="currentCategoryChart" @click="resetChartToCategories" style="position: absolute; right: 20px; top: 15px; padding: 4px 12px; cursor: pointer; background: #e2e8f0; color: #333; border: none; border-radius: 4px; font-weight: bold; transition: var(--transition);">← 返回总览</button>
         <div id="chart" style="width: 100%; height: 200px;"></div>
       </div>
     </div>
 
     <div class="item-grid" v-if="items.length">
-      <div class="card" v-for="item in items" :key="item.id" @click="$router.push('/item/' + item.id)" style="cursor: pointer; transition: box-shadow 0.3s;" onmouseover="this.style.boxShadow='0 4px 8px rgba(0,0,0,0.2)'" onmouseout="this.style.boxShadow='none'">
+      <div class="card card-hover" v-for="item in items" :key="item.id" @click="$router.push('/item/' + item.id)">
         <h3 v-html="highlight(item.title)"></h3>
-        <p style="color:red; font-weight:bold;">￥{{ item.price }}</p>
-        <p style="font-size:12px; color: #888;">
-          <span style="background:#eee; padding: 2px 6px; border-radius: 4px; margin-right: 5px;">{{ item.category_name }}</span>
-          浏览数: {{ item.views }} | {{ item.created_at }}
+        <p style="color:var(--danger-color); font-weight:bold; font-size:1.2rem;">￥{{ item.price }}</p>
+        <p style="font-size:0.85rem; color: var(--text-muted); display:flex; align-items:center; gap:8px; margin-top: auto;">
+          <span style="background:var(--bg-color); padding: 4px 8px; border-radius: 6px;">{{ item.category_name }}</span>
+          <span>👁 {{ item.views }}</span>
+          <span style="margin-left:auto;">{{ item.created_at }}</span>
         </p>
       </div>
     </div>
@@ -151,9 +152,53 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.filters { display: flex; gap: 15px; background: white; padding: 15px; border-radius: 8px; flex-wrap: wrap; margin-bottom: 20px;}
-.panel { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-.item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
-.card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-button { background: #4CAF50; color: white; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; }
+.filters { 
+  display: flex; gap: 15px; 
+  background: var(--card-bg); 
+  padding: 20px; 
+  border-radius: var(--border-radius); 
+  flex-wrap: wrap; margin-bottom: 25px;
+  box-shadow: var(--shadow-sm);
+  align-items: center;
+}
+.panel { 
+  background: var(--card-bg); 
+  padding: 20px; 
+  border-radius: var(--border-radius); 
+  box-shadow: var(--shadow-sm); 
+  transition: var(--transition);
+}
+.panel:hover {
+  box-shadow: var(--shadow-md);
+}
+.item-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); 
+  gap: 24px; 
+}
+.card { 
+  background: var(--card-bg); 
+  padding: 20px; 
+  border-radius: var(--border-radius); 
+  box-shadow: var(--shadow-sm); 
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+.card.card-hover {
+  cursor: pointer;
+}
+.card.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+.card h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+.card p { margin: 5px 0; }
+  .hot-panel { background: linear-gradient(135deg, #fff9e6 0%, #ffffff 100%); border-left: 4px solid var(--warning-color); }
+  .chart-panel { background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%); border-left: 4px solid var(--secondary-color); }
 </style>

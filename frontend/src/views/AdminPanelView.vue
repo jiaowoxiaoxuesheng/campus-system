@@ -1,25 +1,27 @@
-<template>
-  <div style="background:white; padding: 20px; border-radius: 8px;">
-    <h2 style="color: red;">⚙️ 后台管理中心 (Admin Only)</h2>
+﻿<template>
+  <div class="admin-container">
+    <h2 style="color: var(--danger-color); margin-bottom: 30px;">⚙️ 后台管理中心 <span style="font-size:0.5em;color:#999;">(Admin Only)</span></h2>
     
-    <div style="display: flex; gap: 40px; margin-top: 20px;">
+    <div style="display: flex; gap: 30px; flex-wrap: wrap;">
       <!-- 分类管理 -->
-      <div style="flex: 1; border: 1px solid #eee; padding: 15px; border-radius: 8px;">
+      <div class="admin-panel" style="flex: 1; min-width: 250px;">
         <h3>📁 商品分类管理</h3>
-        <ul style="margin-bottom: 15px;">
-          <li v-for="cat in categories" :key="cat.id" style="margin-bottom: 5px;">
-            {{ cat.id }} - {{ cat.name }}
-            <button @click="deleteCategory(cat.id)" style="color:red; background:none; border:none; cursor:pointer;" title="删除">[删除]</button>
+        <ul class="cat-list">
+          <li v-for="cat in categories" :key="cat.id">
+            <span>{{ cat.name }}</span>
+            <button @click="deleteCategory(cat.id)" class="icon-btn" title="删除">🗑️</button>
           </li>
         </ul>
-        <input v-model="newCategory" placeholder="新增类别名..." style="padding: 6px; border:1px solid #ccc; width: 60%">
-        <button @click="addCategory" class="btn bg-blue" style="margin-left:5px;">添加类别</button>
+        <div style="display: flex; gap: 10px; margin-top:20px;">
+          <input v-model="newCategory" placeholder="新增类别名..." style="flex:1;">
+          <button @click="addCategory" class="btn bg-blue">添加类别</button>
+        </div>
       </div>
 
       <!-- 全局物品管理 (下架权) -->
-      <div style="flex: 2; border: 1px solid #eee; padding: 15px; border-radius: 8px;">
+      <div class="admin-panel" style="flex: 2; min-width: 400px;">
         <h3>🔨 全局物品状态强制管理</h3>
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+        <table class="admin-table" style="width: 100%; border-collapse: collapse; text-align: left;">
           <thead>
             <tr style="border-bottom: 2px solid #ddd;"><th>ID</th><th>标题</th><th>卖家</th><th>状态</th><th>强制操作</th></tr>
           </thead>
@@ -29,29 +31,53 @@
               <td>{{ item.title }}</td>
             <td>{{ item.owner_name }}</td>
             <td>
-              <span v-if="item.status === 1" style="color: green;">售卖中</span>
-              <span v-else-if="item.status === 2" style="color: blue;">已售出</span>
-              <span v-else style="color: orange;">强制下架</span>
+              <span v-if="item.status === 1" class="status-tag status-green">售卖中</span>
+              <span v-else-if="item.status === 2" class="status-tag status-blue">已售出</span>
+              <span v-else class="status-tag status-orange">强制下架</span>
             </td>
             <td>
-              <button v-if="item.status !== 3" @click="forceTakeDown(item.id)" class="btn bg-orange">违规强制下架</button>
+              <button v-if="item.status === 1" @click="forceTakeDown(item.id)" class="btn bg-orange">违规强制下架</button>
             </td>
           </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 账号管理 -->
+      <div class="admin-panel" style="flex: 1; min-width: 300px;">
+        <h3>👥 平台账号管理</h3>
+        <table class="admin-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="border-bottom: 2px solid #ddd;"><th>用户名</th><th>角色</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in users" :key="u.id" style="border-bottom: 1px solid #eee;">
+              <td style="padding: 10px;">{{ u.username }}</td>
+              <td>{{ u.role === 'admin' ? '管理员' : '用户' }}</td>
+              <td>
+                <span :class="u.is_active ? 'status-tag status-green' : 'status-tag status-red'">{{ u.is_active ? '正常' : '已禁用' }}</span>
+              </td>
+              <td>
+                <button v-if="u.role !== 'admin'" @click="toggleUser(u.id)" :class="u.is_active ? 'btn bg-red btn-small' : 'btn bg-green btn-small'">
+                  {{ u.is_active ? '禁用' : '解禁' }}
+                </button>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
 
     <!-- 增加：发布系统公告 -->
-    <div style="margin-top: 30px; border: 1px solid #eee; padding: 15px; border-radius: 8px;">
-      <h3>📢 发布系统公告 (全站可见)</h3>
-      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 600px;">
-        <input v-model="announcement.title" placeholder="公告标题..." required style="padding:8px; border:1px solid #ccc; border-radius: 4px;" />
-        <textarea v-model="announcement.content" placeholder="公告内容..." rows="4" required style="padding:8px; border:1px solid #ccc; border-radius: 4px;"></textarea>
+    <div class="admin-panel" style="margin-top: 30px;">
+      <h3>📢 发布系统公告 <span style="font-size:0.6em;color:var(--text-muted)">(全站可见)</span></h3>
+      <div style="display: flex; flex-direction: column; gap: 15px; max-width: 600px;">
+        <input v-model="announcement.title" placeholder="公告标题..." required />
+        <textarea v-model="announcement.content" placeholder="公告内容..." rows="4" required></textarea>
         
-        <div>
-          <label>上传配图: </label>
-          <input type="file" @change="uploadAnnounceImage" accept="image/*" />
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <label style="font-weight:bold; color: var(--text-muted)">上传配图: </label>
+          <input type="file" @change="uploadAnnounceImage" accept="image/*" style="border: none; padding: 0;" />
         </div>
         <div v-if="announcement.images.length > 0" style="display: flex; gap:10px;">
           <img v-for="img in announcement.images" :src="img" :key="img" style="width: 80px; height: 80px; object-fit: cover;">
@@ -68,6 +94,7 @@ import { ref, onMounted } from 'vue'
 
 const categories = ref([])
 const items = ref([])
+const users = ref([])
 const newCategory = ref('')
 const announcement = ref({ title: '', content: '', images: [] })
 const token = localStorage.getItem('token')
@@ -80,6 +107,12 @@ const loadData = async () => {
     // 载入所有商品进行强制管理
     const resItem = await fetch('http://localhost:8000/api/admin/all-items')
     items.value = await resItem.json()
+
+    // 载入所有用户列表
+    const resUsers = await fetch('http://localhost:8000/api/admin/users', {
+        headers: { 'Authorization': token }
+    })
+    if(resUsers.ok) users.value = await resUsers.json()
 }
 
 const addCategory = async () => {
@@ -172,11 +205,77 @@ const forceTakeDown = async (item_id) => {
     }
 }
 
+const toggleUser = async (userId) => {
+    if(!confirm("确定要修改该账号的使用状态吗？")) return;
+    const res = await fetch(`http://localhost:8000/api/admin/users/${userId}/toggle-status`, {
+        method: 'PUT',
+        headers: { 'Authorization': token }
+    });
+    if(res.ok) {
+        alert("更改状态成功");
+        loadData();
+    } else {
+        const data = await res.json();
+        alert("操作失败: " + data.detail);
+    }
+}
+
 onMounted(loadData)
 </script>
 
 <style scoped>
-.btn { border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; color: white; }
-.bg-blue { background: #2196F3; }
-.bg-orange { background: #FF9800; }
+.admin-container {
+  padding: 10px;
+}
+.admin-panel {
+  background: var(--card-bg);
+  padding: 24px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+}
+.admin-panel h3 {
+  margin-top: 0;
+  border-bottom: 2px solid var(--bg-color);
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+.cat-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.cat-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--bg-color);
+  margin-bottom: 8px;
+  transition: var(--transition);
+}
+.cat-list li:hover {
+  background: #e4e7eb;
+}
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  transition: transform 0.2s;
+}
+.icon-btn:hover {
+  transform: scale(1.2);
+}
+.status-tag {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: bold;
+}
+.status-green { background: rgba(76, 175, 80, 0.1); color: var(--primary-color); }
+.status-blue { background: rgba(33, 150, 243, 0.1); color: var(--secondary-color); }
+.status-orange { background: rgba(255, 152, 0, 0.1); color: var(--warning-color); }
+.status-red { background: rgba(244, 67, 54, 0.1); color: var(--danger-color); }
+.btn-small { padding: 4px 10px; font-size: 0.9em; }
 </style>

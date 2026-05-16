@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
@@ -11,6 +11,7 @@ class User(Base):
     password = Column(String(100), nullable=False)
     role = Column(String(20), default="user") # 'user' 也就是买家/卖家, 'admin' 为管理员
     balance = Column(Float, default=0.0) # 小加分项：账户余额（别人购买物品后钱会进这里）
+    is_active = Column(Boolean, default=True) # 是否启用
     
     # 关系：级联删除用户的物品和收藏
     items = relationship('Item', back_populates='owner', cascade='all, delete-orphan')
