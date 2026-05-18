@@ -16,6 +16,7 @@
         <img v-for="(img, idx) in images" :key="idx" :src="img" @click="previewImage = img" style="width: 200px; height: 200px; object-fit: cover; border-radius: 8px; border: 1px solid #eee; cursor: zoom-in;" />
     </div>
 
+
     <div v-if="cmpInfo" style="margin-bottom: 20px; background: #e0f2fe; padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6;">
         <h4 style="margin: 0 0 10px 0; color: #1e40af;">📊 校园行情大盘</h4>
         <div style="font-size: 0.9em; color: #1e3a8a; line-height: 1.6;">
@@ -25,7 +26,48 @@
             <div v-if="item.price < cmpInfo.avg_price" style="margin-top: 10px; font-weight: bold; color: #dc2626;">💡 该卖家定价（￥{{ item.price }}）低于校园均价，是一笔划算的交易！</div>
             <div v-else style="margin-top: 10px; font-weight: bold; color: #4b5563;">💡 该卖家定价（￥{{ item.price }}）高于或等于均价。</div>
         </div>
+        
+        <!-- 价格趋势图 -->
+        <h4 style="margin: 15px 0 10px 0; color: #1e40af;">📈 商品历史改价记录</h4>
+        <div style="height: 120px; position: relative; margin-top: 30px; margin-bottom: 30px; border-bottom: 1px solid #bfdbfe;">
+            <!-- SVG 画折线 -->
+            <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100" style="position: absolute; left: 0; top: 0; overflow: visible;">
+                <polyline 
+                    fill="none" 
+                    stroke="#cbd5e1" 
+                    stroke-width="2"
+                    vector-effect="non-scaling-stroke"
+                    :points="priceTrend.map((tp, i) => `${(priceTrend.length === 1 ? 50 : i / (priceTrend.length - 1) * 100)},${100 - (tp.price / maxTrendPrice * 100)}`).join(' ')"
+                />
+            </svg>
+            <!-- 绝对定位画点和标签 -->
+            <div v-for="(tp, idx) in priceTrend" :key="idx" 
+                 :style="{ 
+                    position: 'absolute', 
+                    left: `${priceTrend.length === 1 ? 50 : (idx / (priceTrend.length - 1)) * 100}%`, 
+                    top: `${100 - (tp.price / maxTrendPrice * 100)}%`,
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 2
+                 }">
+                <!-- 圆点 -->
+                <div :style="{
+                    width: '10px', height: '10px', borderRadius: '50%', border: '2px solid white',
+                    boxShadow: '0 0 3px rgba(0,0,0,0.3)',
+                    background: priceTrend.length === 1 ? '#3b82f6' : (tp.price === Math.min(...priceTrend.map(t=>t.price)) ? '#10b981' : (tp.price === Math.max(...priceTrend.map(t=>t.price)) ? '#ef4444' : '#3b82f6'))
+                }"></div>
+                <!-- 价格标签 (最高标红, 最低标绿) -->
+                <div :style="{
+                    fontSize: '0.8em', position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', fontWeight: 'bold', whiteSpace: 'nowrap',
+                    color: priceTrend.length === 1 ? '#1e3a8a' : (tp.price === Math.min(...priceTrend.map(t=>t.price)) ? '#10b981' : (tp.price === Math.max(...priceTrend.map(t=>t.price)) ? '#ef4444' : '#1e3a8a'))
+                }">
+                    {{ priceTrend.length === 1 ? '' : (tp.price === Math.min(...priceTrend.map(t=>t.price)) ? '↓最低 ' : (tp.price === Math.max(...priceTrend.map(t=>t.price)) ? '↑最高 ' : '')) }}￥{{ tp.price }}
+                </div>
+                <!-- 时间标签 (精确到时分) -->
+                <div style="font-size: 0.65em; color: #64748b; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); white-space: nowrap;">{{ tp.date }}</div>
+            </div>
+        </div>
     </div>
+
 
     <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; min-height: 100px; margin-bottom: 20px;">
         <h4>物品描述：</h4>
@@ -81,6 +123,8 @@ const item = ref(null)
 const images = ref([])
 const cmpInfo = ref(null)
 const previewImage = ref(null)
+const priceTrend = ref([])
+const maxTrendPrice = ref(1)
 const isFavorite = ref(false)
 const userId = localStorage.getItem('user_id')
 const userRole = localStorage.getItem('role')
@@ -99,24 +143,27 @@ const scrollToBottom = () => {
     })
 }
 
-const sendAIMsg = () => {
+const sendAIMsg = async () => {
     if (!aiKeyword.value.trim()) return;
     const txt = aiKeyword.value.trim();
     aiMessages.value.push({ role: 'user', content: txt });
     aiKeyword.value = '';
     scrollToBottom();
     
-    setTimeout(() => {
-        let reply = "抱歉，我不太明白您的意思。您可以问我：怎么买东西？怎么发布？保障如何？有没有砍价空间？";
-        if (txt.includes('发布') || txt.includes('上架') || txt.includes('卖')) reply = "发布商品非常简单！在导航栏点击【发布闲置】，填写标题、价格和分类，如果有实拍图记得上传哦，这样更容易卖出！";
-        else if (txt.includes('退款') || txt.includes('退货') || txt.includes('保障')) reply = "本平台主要提供撮合服务，建议同校尽量线下当面交易验货；如果是大额商品付款，请务必确认后再交易。";
-        else if (txt.includes('比价') || txt.includes('便宜') || txt.includes('均价') || txt.includes('行情')) reply = "您可以在每个商品详情页中看到我们的【校园行情大盘】，会自动帮您全网比价，保证买得明白！";
-        else if (txt.includes('怎么买') || txt.includes('买东西')) reply = "看到心仪的商品后，点击页面下方的【💳 立即购买】。扣除您的余额后，钱款就会打入对方账户！";
-        else if (txt.includes('刀') || txt.includes('砍价') || txt.includes('便宜点')) reply = "商品目前是一口价哦~ 当然，您也可以在评论区或通过联系方式和卖家私下“小刀”一下。祝您校园淘宝愉快！";
-        
-        aiMessages.value.push({ role: 'bot', content: reply });
+    try {
+        const token = localStorage.getItem('token') || ''
+        const res = await fetch(`http://localhost:8000/api/ai/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify({ message: txt, item_id: item.value?.id })
+        });
+        const data = await res.json();
+        aiMessages.value.push({ role: 'bot', content: data.reply || "网络连接异常，但我仍在听！" });
         scrollToBottom();
-    }, 500);
+    } catch(e) {
+        aiMessages.value.push({ role: 'bot', content: "AI 推理服务暂时离线啦~" });
+        scrollToBottom();
+    }
 }
 
 onMounted(async () => {
@@ -136,6 +183,15 @@ onMounted(async () => {
         const cmp = await fetch(`http://localhost:8000/api/items/${route.params.id}/compare`); 
         if(cmp.ok) { cmpInfo.value = await cmp.json() }
     } catch(e){}
+    
+    // 图表数据逻辑获取
+    try {
+        const tpRes = await fetch(`http://localhost:8000/api/items/${route.params.id}/price-trend`);
+        if(tpRes.ok) {
+            priceTrend.value = await tpRes.json();
+            maxTrendPrice.value = Math.max(...priceTrend.value.map(o => o.price)) * 1.2 || 1;
+        }
+    } catch (e) {}
     
     if(userId) {
         try {

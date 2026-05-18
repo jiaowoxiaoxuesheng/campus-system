@@ -8,6 +8,12 @@ from sqlalchemy.orm import sessionmaker, Session
 from models import Base, User, Category, Item, Favorite, Announcement, Purchase
 from datetime import datetime, timedelta
 import secrets
+import jwt
+from jwt import PyJWTError
+import random
+import jwt
+from jwt import PyJWTError
+import random
 import shutil
 import os
 
@@ -65,13 +71,21 @@ class BatchUpdateStatusRequest(BaseModel):
     item_ids: List[int]
     status: int
 
-# 模拟的 Token 会话存储（课设足够，企业级应存 Redis 或 JWT）
-fake_token_store = {}
+# 引入 JWT 进行会话管理
+SECRET_KEY = "campus_trade_secret_2026"
+ALGORITHM = "HS256"
 
 def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    if not authorization or authorization not in fake_token_store:
+    if not authorization:
         raise HTTPException(status_code=401, detail="请先登录")
-    user_id = fake_token_store[authorization]
+    try:
+        payload = jwt.decode(authorization, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("user_id")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="无效的用户凭证")
+    except PyJWTError:
+        raise HTTPException(status_code=401, detail="凭证已过期或无效，请重新登录")
+        
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="无效的用户凭证")
@@ -98,8 +112,14 @@ def login(user: UserAuth, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="用户名或密码错误")
     if not db_user.is_active:
         raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
-    token = secrets.token_hex(16)
-    fake_token_store[token] = db_user.id
+    # 生成真实的 JWT token
+    payload = {
+        "user_id": db_user.id,
+        "username": db_user.username,
+        "role": db_user.role,
+        "exp": datetime.utcnow() + timedelta(days=7)
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return {
         "message": "登录成功", 
         "token": token, 
@@ -159,32 +179,39 @@ def get_items(
         } for i in items]
     }
 
+# ==========================================
+# 获取单个商品详情接口
+# 重点逻辑：我们在获取详情时，通常会给商品的 views(浏览量) 加 1。
+# 但是为了防止卖家自己刷浏览量，或者管理员巡查时增加浏览量影响真实数据，
+# 我们在这里加入了 Token 解析：如果解析出当前看商品的人是本人或者管理员，
+# should_increment 就会被拦截设为 False。
+# ==========================================
 @app.get("/api/items/{item_id}")
 def get_item_detail(item_id: int, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    """物品详情，含浏览量自增机制"""
-    # 支持两种 header 格式：Authorization 或通过查询参数
+    """物品详情，含浏览量防刷拦截机制"""
     token = authorization
     item = db.query(Item).filter(Item.id == item_id).first()
     if not item: raise HTTPException(status_code=404)
     
     # 增加浏览量逻辑：如果不是作者本人且不是管理员，则增加浏览量
     should_increment = True
-    if token and token in fake_token_store:
-        user_id = fake_token_store[token]
-        user = db.query(User).filter(User.id == user_id).first()
-        if user and (user.role == 'admin' or user.id == item.user_id):
-            should_increment = False
+    if token:
+        try:
+            import jwt
+            payload = jwt.decode(token, "campus_trade_secret_2026", algorithms=["HS256"])
+            user_id = payload.get("user_id")
+            user = db.query(User).filter(User.id == user_id).first()
+            if user and (user.role == 'admin' or user.id == int(item.user_id)):
+                should_increment = False
+        except Exception as e:
+            print("Token decode failed:", e)
             
     if should_increment:
         item.views += 1
         db.commit()
     else:
-        # 即使不增加浏览量，也要刷新session以确保返回最新数据
         db.refresh(item)
     
-    # 构造返回体加入 owner_name 等前端可能需要的字段（防止直接返回ORM引发部分关联属性缺失）
-    # 但由于旧逻辑直接返回 item，前端可能期望原样。为了不破坏前端，我们直接转换成dict并加字段
-    # 由于 item 是 ORM 对象，我们可以手动构建 dict：
     return {
         "id": item.id,
         "title": item.title,
@@ -203,10 +230,7 @@ def get_item_detail(item_id: int, authorization: Optional[str] = Header(None), d
 def batch_update_status(req: BatchUpdateStatusRequest, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """加分项：批量修改商品状态"""
     # 权限验证：仅管理员可操作
-    if not authorization or authorization not in fake_token_store:
-        raise HTTPException(status_code=401, detail="请先登录")
-    user_id = fake_token_store[authorization]
-    user = db.query(User).filter(User.id == user_id).first()
+    user = get_current_user(authorization=authorization, db=db)
     if not user or user.role != 'admin':
         raise HTTPException(status_code=403, detail="只有管理员可以批量修改商品状态")
     
@@ -218,16 +242,44 @@ def batch_update_status(req: BatchUpdateStatusRequest, authorization: Optional[s
 def create_item(item: ItemCreate, db: Session = Depends(get_db)):
     """物品发布"""
     new_item = Item(**item.dict())
+    import json
+    from datetime import datetime
+    new_item.price_history = json.dumps([{"price": new_item.price, "date": datetime.now().strftime("%m-%d %H:%M")}])
     db.add(new_item)
     db.commit()
     return {"message": "发布成功"}
 
+# ==========================================
+# 核心技术亮点：真实价格趋势追踪 (编辑物品接口)
+# 作用：商品被重新编辑修改价格时，将价格走势记录进数据库，方便前端画出真实的历史【价格走势折线图】
+# 逻辑：
+# 1. 对比 `old_price` 和 前端传来的新修改由于的区别。
+# 2. 如果发生了变动，就把之前的价格、加上当前的新价格，打包成 JSON 格式，比如：
+# [{"price": 100, "date": "05-18 10:00"}, {"price": 80, "date": "05-18 12:00"}]
+# 3. 把这串 JSON 存进数据库的 price_history 字段里。
+# ==========================================
 @app.put("/api/items/{item_id}")
 def edit_item(item_id: int, item_data: ItemCreate, db: Session = Depends(get_db)):
-    """物品编辑"""
+    """物品编辑 - 带调价记录机制"""
     item = db.query(Item).filter(Item.id == item_id).first()
+    old_price = item.price
     for key, value in item_data.dict().items():
         setattr(item, key, value)
+        
+    if old_price != item.price:
+        import json
+        from datetime import datetime
+        try:
+            history = json.loads(item.price_history) if item.price_history else []
+        except:
+            history = []
+            
+        if not history:
+            history.append({"price": old_price, "date": item.created_at.strftime("%m-%d %H:%M")})
+            
+        history.append({"price": item.price, "date": datetime.now().strftime("%m-%d %H:%M")})
+        item.price_history = json.dumps(history)
+        
     db.commit()
     return {"message": "修改成功"}
 
@@ -401,12 +453,8 @@ def delete_announcement(ann_id: int, db: Session = Depends(get_db), current_user
 def buy_item(item_id: int, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """模拟购买机制"""
     # 验证买家身份
-    if not authorization or authorization not in fake_token_store:
-        raise HTTPException(status_code=401, detail="请先登录")
-    buyer_id = fake_token_store[authorization]
-    buyer = db.query(User).filter(User.id == buyer_id).first()
-    if not buyer:
-        raise HTTPException(status_code=401, detail="用户不存在")
+    buyer = get_current_user(authorization=authorization, db=db)
+    buyer_id = buyer.id
     
     item = db.query(Item).filter(Item.id == item_id).first()
     if not item or item.status != 1:
@@ -468,3 +516,74 @@ def toggle_user_status(user_id: int, db: Session = Depends(get_db), current_user
     return {"message": "操作成功", "is_active": user.is_active}
 
 
+
+
+# ==================== 4. AI 与 拓展接口 ====================
+
+class AIChatRequest(BaseModel):
+    message: str
+    item_id: Optional[int] = None
+    item_id: Optional[int] = None
+
+import openai
+DEEPSEEK_API_KEY = "sk-23dfdbf3a0ae4985b302f098d7c492b0"
+client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+# ==========================================
+# 核心技术亮点：AI 智能导购接口 (接入DeepSeek大模型)
+# 作用：处理前端用户的聊天请求。
+# 难点与解决：
+# 1. 如果直接发给AI，AI不知道用户在问什么商品。
+# 2. 我们通过接收前端传来的 item_id，先去MySQL数据库里查出这个商品的标题、价格、描述。
+# 3. 将这些数据拼接成一段“系统人设提示词”(system_prompt)，告诉AI它的身份和已知商品信息。
+# 4. 这样AI回答起问题来就像是一个熟知该商品的专业客服。
+# ==========================================
+@app.post("/api/ai/chat")
+def ai_chat(req: AIChatRequest, db: Session = Depends(get_db)):
+    """接入 DeepSeek API，注入商品上下文并作为智能助手"""
+    try:
+        sys_prompt = """你是校园二手交易平台的高级智能导购与“全网比价专家”。你的职责不仅是推销，还要客观地帮用户做决策。
+规则：
+1. 如果用户让你比较其他平台（如闲鱼、淘宝、转转等）的价格，你可以根据你的知识库直接给出合理的“市场预估价”或“全网均价”，模拟出你具备全网比价和数据爬取的能力。
+2. 将全网均价与本平台的【当前商品】进行对比，帮用户算一笔账（差价多少）。
+3. 如果当前商品性价比极高，极力推荐购买；如果本商品较贵，教用户一些买二手商品的“砍价话术”。
+4. 表现得像一个技术极客+专业客服，语气自然，字数控制在100字左右。"""
+        
+        if req.item_id:
+            item = db.query(Item).filter(Item.id == req.item_id).first()
+            if item:
+                sys_prompt += f"\n\n【当前正在浏览的商品信息】商品名称：{item.title}，售价：{item.price}元，卖家描述：{item.description}。请根据此信息进行比价和推销。"
+                
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": req.message}
+            ],
+            stream=False,
+            max_tokens=200
+        )
+        reply = response.choices[0].message.content
+        return {"reply": reply}
+    except Exception as e:
+        print("DeepSeek API Error:", e)
+        return {"reply": "哎呀，我的大脑暂时短路啦，可能是网络原因或者API调用失败了。"}
+
+@app.get("/api/items/{item_id}/price-trend")
+def get_price_trend(item_id: int, db: Session = Depends(get_db)):
+    """真实获取商品的历史改价记录"""
+    item = db.query(Item).filter(Item.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    
+    import json
+    try:
+        history = json.loads(item.price_history) if item.price_history else []
+    except:
+        history = []
+        
+    # 如果商品刚上架没改过价格，history是空的，把创建时间和初始价格作为唯一点
+    if not history:
+        history = [{"price": item.price, "date": item.created_at.strftime("%m-%d %H:%M")}]
+        
+    return history

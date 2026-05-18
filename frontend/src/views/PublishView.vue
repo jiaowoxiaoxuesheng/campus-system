@@ -2,7 +2,7 @@
   <div style="background:white; padding: 20px; max-width: 500px; margin: 0 auto; border-radius: 8px;">
     <h2>发布闲置</h2>
     <form @submit.prevent="submit">
-      <div style="margin-bottom:15px;"><label>标题: </label>
+      <div style="margin-bottom:15px;"><label>物品名称: </label>
         <input v-model="form.title" required style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
       </div>
       <div style="margin-bottom:15px;"><label>描述 (支持多行): </label>
