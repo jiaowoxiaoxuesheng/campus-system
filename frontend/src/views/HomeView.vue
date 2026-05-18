@@ -25,7 +25,7 @@
         <h3 v-if="!currentCategoryChart">📈 价格趋势 (分类均价) - 点击柱子查看详情</h3>
         <h3 v-else>📈 {{ currentCategoryChart }} 价格连线趋势图 (按日统计)</h3>
         <button v-if="currentCategoryChart" @click="resetChartToCategories" style="position: absolute; right: 20px; top: 15px; padding: 4px 12px; cursor: pointer; background: #e2e8f0; color: #333; border: none; border-radius: 4px; font-weight: bold; transition: var(--transition);">← 返回总览</button>
-        <div id="chart" style="width: 100%; height: 200px;"></div>
+        <div id="chart" style="width: 100%; height: 280px; margin-top: 10px;"></div>
       </div>
     </div>
 
@@ -100,10 +100,11 @@ const initCategoryChart = async () => {
         const myChart = echarts.init(document.getElementById('chart'))
         myChart.clear() // 清除老画布
         myChart.setOption({
+            grid: { top: 30, right: 30, bottom: 20, left: 20, containLabel: true },
             tooltip: { trigger: 'axis' },
             xAxis: { type: 'category', data: trendData.map(t => t.category_name) },
             yAxis: { type: 'value' },
-            series: [{ name: '平均价格', type: 'bar', data: trendData.map(t => t.avg_price), itemStyle: { color: '#4169E1' } }]
+            series: [{ name: '平均价格', type: 'bar', barMaxWidth: 50, data: trendData.map(t => t.avg_price), itemStyle: { color: '#4169E1' } }]
         })
         
         // 绑定点击事件，解除旧事件，防止重复绑定
@@ -116,6 +117,7 @@ const initCategoryChart = async () => {
             
             myChart.clear()
             myChart.setOption({
+                grid: { top: 30, right: 30, bottom: 20, left: 20, containLabel: true },
                 tooltip: { trigger: 'axis' },
                 xAxis: { type: 'category', data: lineData.map(d => d.date) },
                 yAxis: { type: 'value' },
