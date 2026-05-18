@@ -9,7 +9,7 @@
         <textarea v-model="form.description" style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;"></textarea>
       </div>
       <div style="margin-bottom:15px;"><label>价格 (￥): </label>
-        <input type="number" step="0.01" v-model="form.price" required style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+        <input type="number" step="0.01" min="0" v-model="form.price" required style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
       </div>
       
       <!-- 加分项：多图上传面板 -->
@@ -73,9 +73,13 @@ const submit = async () => {
     const userId = localStorage.getItem('user_id')
     if(!userId) return alert("请先登录！")
 
+    // 前端表单校验 (防止用户填入非法数据)
+    if(form.value.title.trim() === '') return alert("物品名称不能为空或者全是空格！")
+    if(parseFloat(form.value.price) < 0) return alert("价格不能为负数！")
+
     // 组合最终上传给后端的 JSON 报文
     const payload = {
-        title: form.value.title,
+        title: form.value.title.trim(),
         description: form.value.description || '暂无描述',
         price: parseFloat(form.value.price),
         category_id: form.value.category_id,
