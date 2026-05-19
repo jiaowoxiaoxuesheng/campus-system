@@ -260,8 +260,14 @@ const toggleFavorite = async () => {
 }
 .ai-bubble:hover { transform: scale(1.05); }
 .ai-panel { 
-    width: 320px; height: 430px; background: white; border-radius: 12px; 
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; 
+    width: 320px; height: 430px; 
+    min-width: 280px; min-height: 350px;
+    max-width: 80vw; max-height: 80vh;
+    background: white; border-radius: 12px; 
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+    display: flex; flex-direction: column; 
+    overflow: hidden; 
+    resize: both; /* 允许 CSS 随意拉伸 */
 }
 .ai-header { background: #4CAF50; color: white; padding: 12px 15px; display: flex; justify-content: space-between; font-weight: bold; }
 .ai-chats { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; background: #f9f9f9; }

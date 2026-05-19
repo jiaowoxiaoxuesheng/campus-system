@@ -526,7 +526,7 @@ class AIChatRequest(BaseModel):
     item_id: Optional[int] = None
 
 import openai
-DEEPSEEK_API_KEY = "sk-23dfdbf3a0ae4985b302f098d7c492b0"
+DEEPSEEK_API_KEY = "sk-05bb2792bb3f4416b241716721e414a8"
 client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 # ==========================================

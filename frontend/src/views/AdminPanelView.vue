@@ -37,6 +37,7 @@
             </td>
             <td>
               <button v-if="item.status === 1" @click="forceTakeDown(item.id)" class="btn bg-orange">违规强制下架</button>
+              <button v-if="item.status === 3" @click="relistItem(item.id)" class="btn bg-green">重新上架</button>
             </td>
           </tr>
           </tbody>
@@ -225,6 +226,25 @@ const forceTakeDown = async (item_id) => {
     } else {
         const data = await res.json()
         alert("下架失败: " + (data.detail || "未知错误"))
+    }
+}
+
+const relistItem = async (item_id) => {
+    if(!confirm("确定要为该商品解除限制并重新上架吗？")) return;
+    const res = await fetch('http://localhost:8000/api/items/batch-status', {
+        method: 'PUT',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': token 
+        },
+        body: JSON.stringify({ item_ids: [item_id], status: 1 })
+    })
+    if(res.ok) {
+        alert("重新上架成功！")
+        loadData()
+    } else {
+        const data = await res.json()
+        alert("操作失败: " + (data.detail || "未知错误"))
     }
 }
 
