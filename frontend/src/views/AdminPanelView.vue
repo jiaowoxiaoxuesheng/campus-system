@@ -99,7 +99,8 @@ const categories = ref([])
 const items = ref([])
 const users = ref([])
 const newCategory = ref('')
-const announcement = ref({ title: '', content: '', images: [] })
+const announcement = ref({ title: '', content: '', images: [] }) // images 用于本地预览URL
+const announceFiles = ref([]) // 存储待上传的真实文件对象
 const token = localStorage.getItem('token')
 
 const loadData = async () => {
@@ -151,29 +152,40 @@ const deleteCategory = async (cat_id) => {
 
 const removeAnnounceImage = (index) => {
     announcement.value.images.splice(index, 1)
+    announceFiles.value.splice(index, 1)
 }
 
 const uploadAnnounceImage = async (e) => {
     const file = e.target.files[0]
     if(!file) return
-    const formData = new FormData()
-    formData.append('file', file)
-    
-    // 修复：获取到文件后立刻清空 input 的内建 value，允许再次选择相同的图片，也避免已删图片名称误导
+
     e.target.value = ''
     
-    // 复用已有的图片上传接口
-    const res = await fetch('http://localhost:8000/api/upload', {
-        method: 'POST',
-        body: formData
-    })
-    const data = await res.json()
-    if(data.url) announcement.value.images.push(data.url)
+    // 生成前端临时预览地址，点击“发布公告”时才发往后端
+    announcement.value.images.push(URL.createObjectURL(file))
+    announceFiles.value.push(file)
 }
 
 const publishAnnouncement = async () => {
     if(!announcement.value.title || !announcement.value.content) return alert("标题和内容必填")
     
+    // 遍历并发起正式的图片上传请求
+    const uploadedUrls = []
+    for(const file of announceFiles.value) {
+        const formData = new FormData()
+        formData.append('file', file)
+        const uploadRes = await fetch('http://localhost:8000/api/upload', {
+            method: 'POST',
+            body: formData
+        })
+        if(uploadRes.ok) {
+            const data = await uploadRes.json()
+            uploadedUrls.push(data.url)
+        } else {
+            return alert("图片上传给服务器时发生错误")
+        }
+    }
+
     const res = await fetch('http://localhost:8000/api/announcements', {
         method: 'POST',
         headers: { 
@@ -183,13 +195,14 @@ const publishAnnouncement = async () => {
         body: JSON.stringify({
             title: announcement.value.title,
             content: announcement.value.content,
-            images: JSON.stringify(announcement.value.images)
+            images: JSON.stringify(uploadedUrls)
         })
     })
     
     if(res.ok) {
         alert("公告发布成功！")
         announcement.value = { title: '', content: '', images: [] }
+        announceFiles.value = []
     } else {
         alert("发布失败！")
     }

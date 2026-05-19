@@ -39,7 +39,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const form = ref({ title: '', description: '', price: '', category_id: 1 })
-const images = ref([]) 
+const images = ref([]) // 用于在页面上展示所选图片的本地缩略图预览
+const imageFiles = ref([]) // 真实的文件数据，点击“发布”时才传给后端
 const categories = ref([])
 const router = useRouter()
 
@@ -53,32 +54,19 @@ onMounted(async () => {
 const uploadImage = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-    const formData = new FormData()
-    formData.append('file', file)
     
-    // 修复：获取到文件后立刻重置 input 组件的 value
-    // 原理：因为我们的系统支持多图且有自己渲染的缩略图模块，如果不清空，
-    // 原生 input 就还会认为该文件处于选中状态，导致删图后文件名还能被看见，并且阻碍后续长传相同的图。
+    // 获取到文件后立刻重置 input 组件的 value，确保证实可重传同文件
     e.target.value = ''
     
-    try {
-        const res = await fetch('http://localhost:8000/api/upload', {
-            method: 'POST',
-            body: formData
-        })
-        const data = await res.json()
-        if(res.ok) {
-            images.value.push(data.url)
-        } else {
-            alert('图片上传失败')
-        }
-    } catch (err) {
-        alert('接口请求失败')
-    }
+    // 生成本地对象 URL 作为前端预览，不发生任何网络请求
+    images.value.push(URL.createObjectURL(file))
+    // 积攒真实文件，待最后点击发布按钮时，一次性传输给后端
+    imageFiles.value.push(file)
 }
 
 const removeImage = (index) => {
     images.value.splice(index, 1)
+    imageFiles.value.splice(index, 1)
 }
 
 const submit = async () => {
@@ -89,6 +77,28 @@ const submit = async () => {
     if(form.value.title.trim() === '') return alert("物品名称不能为空或者全是空格！")
     if(parseFloat(form.value.price) < 0) return alert("价格不能为负数！")
 
+    // 在确认发布阶段，统一把积攒的文件上传到服务器获取真实链接
+    const uploadedUrls = []
+    for(let i=0; i<imageFiles.value.length; i++) {
+        const file = imageFiles.value[i]
+        const formData = new FormData()
+        formData.append('file', file)
+        try {
+            const res = await fetch('http://localhost:8000/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+            if(res.ok) {
+                const data = await res.json()
+                uploadedUrls.push(data.url)
+            } else {
+                return alert('某张图片上传至后端仓库失败，请检查网络后再试')
+            }
+        } catch (err) {
+            return alert('后端上传接口连接断开')
+        }
+    }
+
     // 组合最终上传给后端的 JSON 报文
     const payload = {
         title: form.value.title.trim(),
@@ -96,7 +106,7 @@ const submit = async () => {
         price: parseFloat(form.value.price),
         category_id: form.value.category_id,
         user_id: parseInt(userId),
-        images: JSON.stringify(images.value)
+        images: JSON.stringify(uploadedUrls)
     }
 
     try {
