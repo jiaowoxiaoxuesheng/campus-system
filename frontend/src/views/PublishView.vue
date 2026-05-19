@@ -22,7 +22,10 @@
         <label>商品展示图片 (多图): </label>
         <input type="file" @change="uploadImage" accept="image/*" style="width: 100%; margin-top: 5px;">
         <div v-if="images.length > 0" style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-          <img v-for="img in images" :src="img" :key="img" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;">
+          <div v-for="(img, index) in images" :key="index" style="position: relative; display: inline-block;">
+            <img :src="img" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;">
+            <button type="button" @click="removeImage(index)" style="position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; line-height: 1; display:flex; align-items:center; justify-content:center; padding:0;">×</button>
+          </div>
         </div>
       </div>
       
@@ -53,6 +56,11 @@ const uploadImage = async (e) => {
     const formData = new FormData()
     formData.append('file', file)
     
+    // 修复：获取到文件后立刻重置 input 组件的 value
+    // 原理：因为我们的系统支持多图且有自己渲染的缩略图模块，如果不清空，
+    // 原生 input 就还会认为该文件处于选中状态，导致删图后文件名还能被看见，并且阻碍后续长传相同的图。
+    e.target.value = ''
+    
     try {
         const res = await fetch('http://localhost:8000/api/upload', {
             method: 'POST',
@@ -67,6 +75,10 @@ const uploadImage = async (e) => {
     } catch (err) {
         alert('接口请求失败')
     }
+}
+
+const removeImage = (index) => {
+    images.value.splice(index, 1)
 }
 
 const submit = async () => {

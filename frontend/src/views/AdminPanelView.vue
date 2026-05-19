@@ -79,8 +79,11 @@
           <label style="font-weight:bold; color: var(--text-muted)">上传配图: </label>
           <input type="file" @change="uploadAnnounceImage" accept="image/*" style="border: none; padding: 0;" />
         </div>
-        <div v-if="announcement.images.length > 0" style="display: flex; gap:10px;">
-          <img v-for="img in announcement.images" :src="img" :key="img" style="width: 80px; height: 80px; object-fit: cover;">
+        <div v-if="announcement.images.length > 0" style="display: flex; gap:10px; flex-wrap: wrap;">
+          <div v-for="(img, index) in announcement.images" :key="index" style="position: relative; display: inline-block;">
+            <img :src="img" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #eee;">
+            <button type="button" @click="removeAnnounceImage(index)" style="position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; line-height: 1; display:flex; align-items:center; justify-content:center; padding:0;">×</button>
+          </div>
         </div>
 
         <button @click="publishAnnouncement" class="btn bg-blue" style="width: 120px;">确认发布公告</button>
@@ -146,11 +149,18 @@ const deleteCategory = async (cat_id) => {
     }
 }
 
+const removeAnnounceImage = (index) => {
+    announcement.value.images.splice(index, 1)
+}
+
 const uploadAnnounceImage = async (e) => {
     const file = e.target.files[0]
     if(!file) return
     const formData = new FormData()
     formData.append('file', file)
+    
+    // 修复：获取到文件后立刻清空 input 的内建 value，允许再次选择相同的图片，也避免已删图片名称误导
+    e.target.value = ''
     
     // 复用已有的图片上传接口
     const res = await fetch('http://localhost:8000/api/upload', {
