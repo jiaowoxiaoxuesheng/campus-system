@@ -169,14 +169,29 @@ def get_items(
     total = query.count()
     items = query.order_by(desc(Item.created_at)).offset((page - 1) * size).limit(size).all()
     
-    return {
-        "total": total,
-        "items": [{
-            "id": i.id, "title": i.title, "price": i.price, "views": i.views,
+    import json as _json
+    result_items = []
+    for i in items:
+        # 计算史低
+        try:
+            history = _json.loads(i.price_history) if i.price_history else []
+        except:
+            history = []
+        if not history:
+            history = [{"price": i.price}]
+        lowest = min(h["price"] for h in history)
+        is_lowest = i.price <= lowest
+        result_items.append({
+            "id": i.id, "title": i.title, "price": i.price, "views": i.views, "images": i.images,
             "created_at": i.created_at.strftime("%Y-%m-%d"),
             "category_name": i.category.name if i.category else "默认",
-            "owner_name": i.owner.username if i.owner else "未知"
-        } for i in items]
+            "owner_name": i.owner.username if i.owner else "未知",
+            "is_lowest": is_lowest,
+            "lowest_price": lowest
+        })
+    return {
+        "total": total,
+        "items": result_items
     }
 
 # ==========================================
@@ -321,9 +336,36 @@ def compare_price(item_id: int, db: Session = Depends(get_db)):
 
 @app.get('/api/users/{user_id}/favorites')
 def get_my_favorites(user_id: int, db: Session = Depends(get_db)):
-    """我的收藏列表"""
+    """我的收藏列表（附带史低标识）"""
+    import json
     favs = db.query(Favorite).filter(Favorite.user_id == user_id).all()
-    return [f.item for f in favs]
+    result = []
+    for f in favs:
+        item = f.item
+        item_data = {
+            "id": item.id,
+            "title": item.title,
+            "description": item.description,
+            "price": item.price,
+            "status": item.status,
+            "views": item.views,
+            "images": item.images,
+            "category_id": item.category_id,
+            "user_id": item.user_id,
+            "created_at": str(item.created_at),
+        }
+        # 解析 price_history，计算历史最低价
+        try:
+            history = json.loads(item.price_history) if item.price_history else []
+        except:
+            history = []
+        if not history:
+            history = [{"price": item.price, "date": item.created_at.strftime("%m-%d %H:%M")}]
+        lowest = min(h["price"] for h in history)
+        item_data["is_lowest"] = item.price <= lowest
+        item_data["lowest_price"] = lowest
+        result.append(item_data)
+    return result
 
 @app.get("/api/users/{user_id}/items")
 def get_my_publishes(user_id: int, db: Session = Depends(get_db)):
@@ -589,3 +631,6 @@ def get_price_trend(item_id: int, db: Session = Depends(get_db)):
         history = [{"price": item.price, "date": item.created_at.strftime("%m-%d %H:%M")}]
         
     return history
+
+
+
