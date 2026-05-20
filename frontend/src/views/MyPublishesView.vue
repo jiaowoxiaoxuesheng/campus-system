@@ -128,7 +128,7 @@ const batchUpdateStatus = async (status) => {
     if(!selected.value.length) return alert('请先勾选需要操作的物品')
     const res = await fetch('http://localhost:8000/api/items/batch-status', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': localStorage.getItem('token') || '' },
         body: JSON.stringify({ item_ids: selected.value, status })
     })
     const data = await res.json()

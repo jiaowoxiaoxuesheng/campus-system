@@ -228,13 +228,18 @@ def get_item_detail(item_id: int, authorization: Optional[str] = Header(None), d
 
 @app.put("/api/items/batch-status")
 def batch_update_status(req: BatchUpdateStatusRequest, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    """加分项：批量修改商品状态"""
-    # 权限验证：仅管理员可操作
+    """批量修改商品状态（管理员可操作所有，普通用户只能操作自己的商品）"""
+    # 权限验证：已验证登录即可，管理员可操作所有，普通用户只能操作自己的商品
     user = get_current_user(authorization=authorization, db=db)
-    if not user or user.role != 'admin':
-        raise HTTPException(status_code=403, detail="只有管理员可以批量修改商品状态")
-    
-    db.query(Item).filter(Item.id.in_(req.item_ids)).update({"status": req.status}, synchronize_session=False)
+    if not user:
+        raise HTTPException(status_code=401, detail="无效的用户凭证")
+    if user.role == "admin":
+        target_items = db.query(Item).filter(Item.id.in_(req.item_ids))
+    else:
+        target_items = db.query(Item).filter(Item.id.in_(req.item_ids), Item.user_id == user.id)
+        if target_items.count() != len(req.item_ids):
+            raise HTTPException(status_code=403, detail="只能操作自己发布的商品")
+    target_items.update({"status": req.status}, synchronize_session=False)
     db.commit()
     return {"message": "批量更新状态成功"}
 
@@ -525,7 +530,7 @@ class AIChatRequest(BaseModel):
     message: str
     item_id: Optional[int] = None
 
-QWEN_API_KEY = ""
+QWEN_API_KEY = "sk-0e108b5a105a4e5287ed30c8a5d8b89c"
 client = OpenAI(
     api_key=QWEN_API_KEY,
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -565,7 +570,7 @@ def ai_chat(req: AIChatRequest, db: Session = Depends(get_db)):
         print("千问API Error:", e)
         return {"reply": "哎呀，我的大脑暂时短路啦，可能是网络原因或者API调用失败了。"}
 
-# ===================== 价格走势接口（完全原样）=====================
+# ===================== 价格走势接口=====================
 @app.get("/api/items/{item_id}/price-trend")
 def get_price_trend(item_id: int, db: Session = Depends(get_db)):
     """真实获取商品的历史改价记录"""
