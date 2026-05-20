@@ -516,6 +516,7 @@ def toggle_user_status(user_id: int, db: Session = Depends(get_db), current_user
     return {"message": "操作成功", "is_active": user.is_active}
 
 
+from openai import OpenAI
 
 
 # ==================== 4. AI 与 拓展接口 ====================
@@ -523,28 +524,22 @@ def toggle_user_status(user_id: int, db: Session = Depends(get_db), current_user
 class AIChatRequest(BaseModel):
     message: str
     item_id: Optional[int] = None
-    item_id: Optional[int] = None
 
-import openai
-DEEPSEEK_API_KEY = "sk-05bb2792bb3f4416b241716721e414a8"
-client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+QWEN_API_KEY = ""
+client = OpenAI(
+    api_key=QWEN_API_KEY,
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+)
+# ====================================================================
 
-# ==========================================
-# 核心技术亮点：AI 智能导购接口 (接入DeepSeek大模型)
-# 作用：处理前端用户的聊天请求。
-# 难点与解决：
-# 1. 如果直接发给AI，AI不知道用户在问什么商品。
-# 2. 我们通过接收前端传来的 item_id，先去MySQL数据库里查出这个商品的标题、价格、描述。
-# 3. 将这些数据拼接成一段“系统人设提示词”(system_prompt)，告诉AI它的身份和已知商品信息。
-# 4. 这样AI回答起问题来就像是一个熟知该商品的专业客服。
-# ==========================================
+# ===================== AI 聊天接口（已改好成千问+联网比价）=====================
 @app.post("/api/ai/chat")
 def ai_chat(req: AIChatRequest, db: Session = Depends(get_db)):
-    """接入 DeepSeek API，注入商品上下文并作为智能助手"""
+    """接入 通义千问API，开启联网搜索实现全网比价"""
     try:
-        sys_prompt = """你是校园二手交易平台的高级智能导购与“全网比价专家”。你的职责不仅是推销，还要客观地帮用户做决策。
+        sys_prompt = """你是校园二手交易平台的高级智能导购与“全网比价专家”。你的职责不仅是推销，还要客观地帮用户做决策。已开启实时联网搜索，能获取闲鱼、淘宝、转转等平台的最新二手价格。
 规则：
-1. 如果用户让你比较其他平台（如闲鱼、淘宝、转转等）的价格，你可以根据你的知识库直接给出合理的“市场预估价”或“全网均价”，模拟出你具备全网比价和数据爬取的能力。
+1. 用户问价格/比价时，**必须联网搜索当前真实的全网二手均价**，禁止编造或使用旧知识。
 2. 将全网均价与本平台的【当前商品】进行对比，帮用户算一笔账（差价多少）。
 3. 如果当前商品性价比极高，极力推荐购买；如果本商品较贵，教用户一些买二手商品的“砍价话术”。
 4. 表现得像一个技术极客+专业客服，语气自然，字数控制在100字左右。"""
@@ -555,20 +550,22 @@ def ai_chat(req: AIChatRequest, db: Session = Depends(get_db)):
                 sys_prompt += f"\n\n【当前正在浏览的商品信息】商品名称：{item.title}，售价：{item.price}元，卖家描述：{item.description}。请根据此信息进行比价和推销。"
                 
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="qwen-plus",
             messages=[
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": req.message}
             ],
             stream=False,
-            max_tokens=200
+            max_tokens=300,
+            extra_body={"enable_search": True}  # 开启全网实时比价
         )
         reply = response.choices[0].message.content
         return {"reply": reply}
     except Exception as e:
-        print("DeepSeek API Error:", e)
+        print("千问API Error:", e)
         return {"reply": "哎呀，我的大脑暂时短路啦，可能是网络原因或者API调用失败了。"}
 
+# ===================== 价格走势接口（完全原样）=====================
 @app.get("/api/items/{item_id}/price-trend")
 def get_price_trend(item_id: int, db: Session = Depends(get_db)):
     """真实获取商品的历史改价记录"""
