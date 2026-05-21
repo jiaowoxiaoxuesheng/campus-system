@@ -136,7 +136,7 @@ def upload_image(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, file_object)
     return {"url": f"http://localhost:8000/{file_location}"}
 
-# ==================== 3. 核心考核接口 ====================
+# ==================== 3. 考核接口 ====================
 
 @app.get("/api/items")
 def get_items(
@@ -392,7 +392,7 @@ def get_hot_items(db: Session = Depends(get_db)):
 
 @app.get("/api/price-trends")
 def get_price_trends(db: Session = Depends(get_db)):
-    """加分项：价格趋势展示 (全局按分类统计平均价格) - 仅统计上架商品"""
+    """价格趋势展示 (全局按分类统计平均价格) - 仅统计上架商品"""
     trends = db.query(
         Category.name, 
         func.avg(Item.price).label("avg_price")
@@ -566,20 +566,18 @@ def toggle_user_status(user_id: int, db: Session = Depends(get_db), current_user
 from openai import OpenAI
 
 
-# ==================== 4. AI 与 拓展接口 ====================
+# ==================== AI 与 拓展接口 ====================
 
 class AIChatRequest(BaseModel):
     message: str
     item_id: Optional[int] = None
 
-QWEN_API_KEY = "sk-0e108b5a105a4e5287ed30c8a5d8b89c"
+QWEN_API_KEY = "sk-e0f1f3e585924840987d3197ac716c17"
 client = OpenAI(
     api_key=QWEN_API_KEY,
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
-# ====================================================================
 
-# ===================== AI 聊天接口（已改好成千问+联网比价）=====================
 @app.post("/api/ai/chat")
 def ai_chat(req: AIChatRequest, db: Session = Depends(get_db)):
     """接入 通义千问API，开启联网搜索实现全网比价"""

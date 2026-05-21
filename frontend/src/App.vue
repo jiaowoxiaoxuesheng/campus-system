@@ -70,7 +70,7 @@ const logout = () => {
   auth.username = ''
   auth.role = ''
   router.push('/login')
-  // 为了确保响应式立刻更新，这里加个强制刷新最稳妥且适合新手逻辑
+  // 为了确保响应式立刻更新,强制刷新页面
   setTimeout(() => location.reload(), 100)
 }
 </script>
